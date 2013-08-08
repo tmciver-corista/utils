@@ -2,79 +2,64 @@ import sys
 import re
 import pprint
 
-#inFile = r'C:\Users\Tim McIver\Documents\workspace\ExportService\MiraxReader\src\MiraxSlideReader.cs'
-#outFile = r'C:\Users\Tim McIver\Documents\workspace\ExportService\MiraxReader\src\MiraxSlideReader-post.cs'
-inFile = sys.argv[1]
+def normalizeLines(lines):
+    """Normalizes multi-line logger calls, i.e., transform them to
+    a single line.  All other lines are unaltered."""
 
-defaultLogLevel = 'Info'
-logLevelDict = {'TraceEventType.Error': 'Error',
-                'TraceEventType.Warning': 'Warn',
-                'TraceEventType.Critical': 'Fatal'}
+    #outStr = ''
+    lineNum = 0
+    outLines = []
+    wasMultiLineLog = False
+    for line in lines:
 
-newPlainLogStr = '{0}log.{1}("{2}");'
-newFormatLogStr = '{0}log.{1}Format("{2}", {3});'
+        # see if the previous line was the first line of
+        # a multi-line log call
+        if wasMultiLineLog:
+            lastLine = outLines.pop()
+            outLine = lastLine.rstrip() + ' ' + line.lstrip()
+            outLines.append(outLine)
+            wasMultiLineLog = False
+            continue
 
-logPrefixRE = r'(\s+)Logger(.*)$'
-logRE = r'(\s+)Logger\.Log\("(.*)",\s+(.*),\s+(.*),\s+"(.*)"(,\s*(.*))?\);'
+        # find a logger call
+        logPrefixRE = r'(\s+)Logger(.*)$'
+        m = re.match(logPrefixRE, line)
 
-myin = open(inFile, 'r')
-#out = open(outFile, 'w')
+        # if it's not a match, just append the line
+        if m is None:
+            #tmpFile.write(line)
+            outLines.append(line)
+            continue
 
-# first, fix logging lines that are broken across two lines
-#tmpFile = open('tmp.cs', 'w')
-outStr = ''
-lineNum = 0
-for line in myin:
+        # if the logging line ends with a semicolon, we just append it too
+        if line.endswith(');\n'):
+            #tmpFile.write(line)
+            outLines.append(line)
+            continue
 
-    # find a logger call
-    m = re.match(logPrefixRE, line)
+        # at this point we have the first line of a multi-line
+        # log call. Append it to the list and set the flag.
+        outLines.append(line)
+        wasMultiLineLog = True
 
-    # if it's not a match, just write the line
+    return outLines
+    
+def transformLine(logLine):
+    """If the line is an 'old' logger line, transform it appropriately.
+    Otherwise, pass it on unaltered."""
+
+    logRegex = r'(\s+)Logger\.Log\("(.*)",\s+(.*),\s+(.*),\s+"(.*)"(,\s*(.*))?\);'
+    m = re.match(logRegex, logLine)
+
+    # if it didn't match, just return the line unaltered
     if m is None:
-        #tmpFile.write(line)
-        outStr = outStr + line
-        continue
+        return logLine
 
-    #print(outStr)
-
-    # if the logging line ends with a semicolon, we just write it too
-    if line.endswith(');\n'):
-        #tmpFile.write(line)
-        outStr = outStr + line
-        continue
-
-    # read the next line and remove the whitespace at the front
-    nextLine = myin.readline()
-    #lineNum = lineNum + 1
-
-    # write the concantenation of these two lines to the file
-    outStr = outStr + line.rstrip() + ' ' + nextLine.lstrip()
-    #tmpFile.write(line.rstrip() + ' ' + nextLine.lstrip())
-
-# some cleanup
-#tmpFile.close()
-myin.close()
-
-# now, operate on tmpFile and do the transformation
-myout = open(inFile, 'w')
-#tmpFile = open('tmp.cs', 'r')
-#tmpFile2 = open('tmp2.cs', 'w')
-#print(outStr)
-lines = outStr.split('\n')
-print('Number of lines: ' + str(len(lines)))
-#sys.exit(0)
-for line in lines:
-
-    # find a logger call
-    m = re.match(logRE, line)
-
-    # if it's not a match, just write the line
-    if m is None:
-        myout.write(line + '\n')
-        continue
-
-##    pprint.pprint(m.groups())
-##    continue
+    # create a mapping of TraceEventType to Common.Logging log method name
+    defaultLogLevel = 'Info'
+    logLevelDict = {'TraceEventType.Error': 'Error',
+                    'TraceEventType.Warning': 'Warn',
+                    'TraceEventType.Critical': 'Fatal'}
 
     # method call name
     logLevel = m.group(4)
@@ -90,27 +75,36 @@ for line in lines:
     leadingWhitespace = m.group(1)
 
     # format the new log call
+    newPlainLogStr = '{0}log.{1}("{2}");'
+    newFormatLogStr = '{0}log.{1}Format("{2}", {3});'
     if isFormatted:
         args = m.group(7)
         newLogStr = newFormatLogStr.format(leadingWhitespace, logMethodName, message, args)
     else:
         newLogStr = newPlainLogStr.format(leadingWhitespace, logMethodName, message)
 
-    #print('Will replace old log line:\n' + line + 'with this one:\n' + newLogStr + '\n')
-    myout.write(newLogStr + '\n')
+    return newLogStr + '\n'
 
+# main script
+inFile = sys.argv[1]
+myin = open(inFile, 'r')
 
+# normalize the 'old' logger lines
+normalizedLines = normalizeLines(myin)
+
+# close the input file
+myin.close()
+
+# transform the 'old' logger lines
+transformedLines = [transformLine(line) for line in normalizedLines]
+
+# create a string from the transformed lines
+outStr = ''.join(line for line in transformedLines)
+
+# debug: write transformed lines
+
+# write the transformed lines back out to the input file
+myout = open(inFile, 'w')
+myout.write(outStr)
 myout.close()
-#tmpFile2.close()
-
-##while line = myin.readline()
-##
-##with open(inFile, 'r') as myin:
-##    data = myin.read()
-##    m = re.findall(logRE, data)
-##    #m = re.search(logRE, data)
-##    pprint.pprint(m)
-##    print(len(m))
-##    if m is not None:
-##        print(m.groups())
 
