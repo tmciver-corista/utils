@@ -49,7 +49,7 @@ def transformLine(logLine):
     """If the line is an 'old' logger line, transform it appropriately.
     Otherwise, pass it on unaltered."""
 
-    logRegex = r'(\s+)Logger\.Log\("(.*)",\s+(.*),\s+(.*),\s+"(.*)"(,\s*(.*))?\);'
+    logRegex = r'(\s+)(//)?Logger\.Log\("(.*)",\s+(.*),\s+(.*),\s+"(.*)"(,\s*(.*))?\);'
     m = re.match(logRegex, logLine)
 
     # if it didn't match, just return the line unaltered
@@ -63,26 +63,27 @@ def transformLine(logLine):
                     'TraceEventType.Critical': 'Fatal'}
 
     # method call name
-    logLevel = m.group(4)
+    logLevel = m.group(5)
     logMethodName = logLevelDict.get(logLevel, defaultLogLevel)
     #print('logMethodName: ' + logMethodName)
 
     # get old message string
-    message = m.group(5)
+    message = m.group(6)
 
     # do we have a format string?
-    isFormatted = m.group(6) is not None
+    isFormatted = m.group(7) is not None
 
-    leadingWhitespace = m.group(1)
+    leadingWhitespace = m.group(1) or ''
+    leadingComment = m.group(2) or ''
 
     # format the new log call
-    newPlainLogStr = '{0}log.{1}("{2}");'
-    newFormatLogStr = '{0}log.{1}Format("{2}", {3});'
+    newPlainLogStr = '{0}{1}log.{2}("{3}");'
+    newFormatLogStr = '{0}{1}log.{2}Format("{3}", {4});'
     if isFormatted:
-        args = m.group(7)
-        newLogStr = newFormatLogStr.format(leadingWhitespace, logMethodName, message, args)
+        args = m.group(8)
+        newLogStr = newFormatLogStr.format(leadingWhitespace, leadingComment, logMethodName, message, args)
     else:
-        newLogStr = newPlainLogStr.format(leadingWhitespace, logMethodName, message)
+        newLogStr = newPlainLogStr.format(leadingWhitespace, leadingComment, logMethodName, message)
 
     return newLogStr + '\n'
 
