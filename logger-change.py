@@ -1,6 +1,7 @@
 import sys
 import re
-import pprint
+import fnmatch
+import os
 
 def normalizeLines(lines):
     """Normalizes multi-line logger calls, i.e., transform them to
@@ -86,25 +87,34 @@ def transformLine(logLine):
     return newLogStr + '\n'
 
 # main script
-inFile = sys.argv[1]
-myin = open(inFile, 'r')
+inDir = sys.argv[1]
 
-# normalize the 'old' logger lines
-normalizedLines = normalizeLines(myin)
+files = []
+for root, dirnames, filenames in os.walk(inDir):
+  for filename in fnmatch.filter(filenames, '*.cs'):
+      files.append(os.path.join(root, filename))
 
-# close the input file
-myin.close()
+# iterate over each csharp file
+for file in files:
 
-# transform the 'old' logger lines
-transformedLines = [transformLine(line) for line in normalizedLines]
+    print('Preparing to transform file: ' + file)
 
-# create a string from the transformed lines
-outStr = ''.join(line for line in transformedLines)
+    myin = open(file, 'r')
 
-# debug: write transformed lines
+    # normalize the 'old' logger lines
+    normalizedLines = normalizeLines(myin)
 
-# write the transformed lines back out to the input file
-myout = open(inFile, 'w')
-myout.write(outStr)
-myout.close()
+    # close the input file
+    myin.close()
+
+    # transform the 'old' logger lines
+    transformedLines = [transformLine(line) for line in normalizedLines]
+
+    # create a string from the transformed lines
+    outStr = ''.join(line for line in transformedLines)
+
+    # write the transformed lines back out to the input file
+    myout = open(file, 'w')
+    myout.write(outStr)
+    myout.close()
 
